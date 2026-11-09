@@ -1406,20 +1406,16 @@ impl RenderingBackend for GlContext {
         self.cache.store_buffer_binding(gl_target);
         self.cache
             .bind_buffer(gl_target, buffer.gl_buf, buffer.index_type);
-        // The GPU may still be reading this buffer from an earlier draw. Without
-        // orphaning, mobile drivers (Adreno) copy the whole buffer before the write.
-        // A null glBufferData gives the driver fresh storage to write into instead.
         if buffer.usage == BufferUsage::Stream {
-            unsafe {
-                glBufferData(
-                    gl_target,
-                    buffer.size as _,
-                    std::ptr::null() as *const _,
-                    gl_usage(&buffer.usage),
-                )
-            };
+            // The GPU may still be reading this buffer from an earlier draw. A
+            // glBufferSubData would then make mobile drivers (Adreno) copy the whole
+            // buffer before the write. glBufferData with the new data instead hands
+            // the driver fresh storage of just the bytes written: no copy, and no
+            // reallocation of the full capacity either.
+            unsafe { glBufferData(gl_target, size as _, data.ptr as _, gl_usage(&buffer.usage)) };
+        } else {
+            unsafe { glBufferSubData(gl_target, 0, size as _, data.ptr as _) };
         }
-        unsafe { glBufferSubData(gl_target, 0, size as _, data.ptr as _) };
         self.cache.restore_buffer_binding(gl_target);
     }
 
